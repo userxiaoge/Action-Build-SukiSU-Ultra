@@ -50,7 +50,7 @@ jobs:
         CCACHE_NOHASHDIR: "true"
         CCACHE_HARDLINK: "true"
         CCACHE_DIR: /home/runner/.ccache  
-        CCACHE_MAXSIZE: 16G
+        CCACHE_MAXSIZE: 32G
     
     steps:
       - name: Maximize build space
@@ -124,7 +124,7 @@ jobs:
       - name: Build Kernel FAST
         run: |
           cd kernel_workspace
-          ./kernel_platform/oplus/build/oplus_rebuild_img.sh waipio gki
+          ./kernel_platform/oplus/build/oplus_build_kernel.sh waipio gki
 
           
       - name: Make AnyKernel3
