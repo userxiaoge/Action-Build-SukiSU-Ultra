@@ -125,6 +125,7 @@ jobs:
         run: |
           cd kernel_workspace
           ./kernel_platform/oplus/build/oplus_build_kernel.sh waipio gki
+          exit 0
 
           
       - name: Make AnyKernel3
