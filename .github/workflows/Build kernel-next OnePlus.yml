@@ -50,7 +50,7 @@ jobs:
         CCACHE_NOHASHDIR: "true"
         CCACHE_HARDLINK: "true"
         CCACHE_DIR: /home/runner/.ccache  
-        CCACHE_MAXSIZE: 8G
+        CCACHE_MAXSIZE: 16G
     
     steps:
       - name: Maximize build space
