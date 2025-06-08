@@ -255,7 +255,6 @@ jobs:
 
       # 添加 KernelSU  Next
       - name: Set up KernelSU  Next
-        if: github.event.inputs.KSUNEXT_ENABLED == 'true'
         run: |
          cd kernel_workspace/kernel_platform
          curl -L "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s v1.0.7
@@ -265,7 +264,6 @@ jobs:
          sed -i "29s/ccflags-y += -DKSU_VERSION=11998/ccflags-y += -DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
 
       - name: Set up susfs
-        if: github.event.inputs.SUSFS_ENABLED == 'true'
         run: |
            cd kernel_workspace
            git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
@@ -290,14 +288,6 @@ jobs:
            cp ../../kernel_patches/69_hide_stuff.patch ./
            patch -p1 -F 3 < 69_hide_stuff.patch
 
-           if [ "${{ github.event.inputs.ZRAM }}" = "true" ]; then
-           echo "正在打zram补丁"
-           cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./common/include/linux
-           cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./common/lib
-           cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./common/crypto
-           cp -r ../SukiSU_patch/other/zram/lz4k_oplus ./common/lib/
-           echo "zram_patch完成"
-
       # OGKI转换GKI，可以直接使用官方 dtbo 开机，按需是否启用
       - name: Apply Convert HMBIRD_OGKI to HMBIRD_GKI
         if: ${{ github.event.inputs.KERNEL_VERSION == '6.6' }}
@@ -308,28 +298,6 @@ jobs:
             echo "正在打OGKI转换GKI补丁"
             patch -p1 -F 3 < hmbird_patch.patch
             echo "OGKI转换GKI_patch完成"
-
-      - name: Apply VFS
-        if: ${{ github.event.inputs.VFS == 'true' }}
-        run: |
-          cd kernel_workspace/kernel_platform/common
-            cp ../../SukiSU_patch/hooks/syscall_hooks.patch ./
-            echo "正在打vfs补丁"
-            patch -p1 -F 3 < syscall_hooks.patch
-            echo "vfs_patch完成"
-
-      - name: Apply LZ4KD
-        if: ${{ github.event.inputs.ZRAM == 'true' }}
-        run: |
-          cd kernel_workspace/kernel_platform/common
-            cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch ./
-            echo "正在打lz4kd补丁"
-            patch -p1 -F 3 < lz4kd.patch || true
-            echo 'lz4kd_patch完成'
-            cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4k_oplus.patch ./
-            echo "正在打lz4k_oplus补丁"
-            patch -p1 -F 3 < lz4k_oplus.patch || true
-            echo 'lz4k_oplus_patch完成'
 
       # 配置信息
       - name: Add Configuration Settings
