@@ -157,32 +157,8 @@ jobs:
            
       - name: Build Kernel FAST
         run: |
-          KERNEL_VERSION="${{ github.event.inputs.KERNEL_VERSION }}"
-
-          if  [[ "$KERNEL_VERSION" == "5.10" ]]; then
-            export PATH="/home/runner/work/Action-Build-SukiSU-Ultra/Action-Build-SukiSU-Ultra/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
-          else
-            echo "⚠️ 当前内核版本 \"$KERNEL_VERSION\" 没有对应 clang 工具链，回退使用官方构建脚本（同时开启自定义内核后缀可能导致内核后缀错乱）"
-            echo "请考虑关闭 FAST_BUILD 或补充该版本 clang 路径"
-            cd kernel_workspace
-            LTO=thin SYSTEM_DLKM_RE_SIGN=0 BUILD_SYSTEM_DLKM=0 KMI_SYMBOL_LIST_STRICT_MODE=0 \
-            ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} ${{ github.event.inputs.BUILD_METHOD }}
-            exit 0
-          fi
-          ccache clang -v
-          sudo apt install -y libelf-dev
-          cd kernel_workspace/kernel_platform/common
-
-          MAKE_ARGS="LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC=clang \
-            RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
-            PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole \
-            LD=ld.lld HOSTLD=ld.lld KCFLAGS+=-Wno-error"
-          # 如果是 5.10，添加 LLVM_IAS=1
-          if [[ "$KERNEL_VERSION" == "5.10" ]]; then
-            MAKE_ARGS="LLVM_IAS=1 $MAKE_ARGS"
-          fi
-          make -j$(nproc --all) O=out $MAKE_ARGS gki_defconfig
-          make -j$(nproc --all) O=out $MAKE_ARGS
+          cd kernel_workspace
+          ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} gki
 
           
       - name: Make AnyKernel3
