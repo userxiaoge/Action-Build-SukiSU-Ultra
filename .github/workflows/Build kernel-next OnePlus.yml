@@ -1,1 +1,183 @@
 
+name: Build KernelSU Next
+on:
+  workflow_dispatch:
+    inputs:
+      CPU:
+        description: "分支"
+        required: true
+        default: 'sm8475'
+      FEIL:
+        description: "配置文件"
+        required: true
+        default: 'oneplus_ace2_v'
+      CPUD:
+        description: "处理器代号"
+        required: true
+        default: 'waipio'
+      ANDROID_VERSION:
+        description: "内核安卓版本"
+        required: true
+        default: 'android12'
+      KERNEL_VERSION:
+        description: "内核版本"
+        required: true
+        default: '5.10'
+      KSUNEXT_ENABLED:
+        description: "添加 KSU NEXT"
+        required: true
+        type: boolean
+        default: true
+      SUSFS_ENABLED:
+        description: "添加 SUSFS"
+        required: true
+        type: boolean
+        default: true
+      KERNEL_TIME:
+       description: "内核构建日期更改(默认为原厂)"
+       required: true
+       default: 'Tue Dec 17 23:36:49 UTC 2025'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+        CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+        CCACHE_NOHASHDIR: "true"
+        CCACHE_HARDLINK: "true"
+        CCACHE_DIR: /home/runner/.ccache  
+        CCACHE_MAXSIZE: 8G
+    
+    steps:
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 8192
+          temp-reserve-mb: 2048
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+          
+      - name: Configure Git
+        run: |
+         git config --global user.name "build"
+         git config --global user.email "3436378798@qq.com"
+
+      - name: Restore ccache
+        uses: actions/cache@v3
+        with:
+          path: /home/runner/.ccache
+          key: ccache-${{ runner.os }}-${{ github.ref }}
+          restore-keys: |
+            ccache-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+         sudo apt-get update
+         sudo apt-get install lld
+         sudo apt-get install llvm
+         sudo apt update && sudo apt upgrade -y
+         sudo apt install -y python3 git curl
+
+      - name: Install repo tool
+        run: |
+         curl https://storage.googleapis.com/git-repo-downloads/repo > ~/repo
+         chmod a+x ~/repo
+         sudo mv ~/repo /usr/local/bin/repo
+
+      - name: Initialize repo and sync
+        run: |
+         mkdir kernel_workspace && cd kernel_workspace
+         repo init -u https://github.com/OnePlusOSS/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
+         repo sync
+         rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
+         rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
+         sed -i 's/ -dirty//g' kernel_platform/common/scripts/setlocalversion
+         sed -i 's/ -dirty//g' kernel_platform/msm-kernel/scripts/setlocalversion
+
+      - name: Run sed and perl Commands
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "kernel_workspace/kernel_platform"
+          
+          echo "Running sed commands..."
+          
+          # Run sed commands for modifications
+          sed -i 's/check_defconfig//' ./common/build.config.gki
+          sed -i 's/-dirty//' ./common/scripts/setlocalversion
+          sed -i 's/-dirty//' ./msm-kernel/scripts/setlocalversion
+          sed -i '$s|echo "\$res"|echo "\-android12-2-o-gfc9d05bca1e7cd"|' ./common/scripts/setlocalversion
+          sed -i '$s|echo "\$res"|echo "\-android12-2-o-gfc9d05bca1e7cd"|' ./msm-kernel/scripts/setlocalversion
+          sed -i "/stable_scmversion_cmd/s/-maybe//g" ./build/kernel/kleaf/impl/stamp.bzl
+          
+         
+          # Run perl command to modify UTS_VERSION
+          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Sat Apr 20 04:20:00 UTC 2024"}' ./common/scripts/mkcompile_h
+
+      - name: Set up KernelSU  Next
+        if: github.event.inputs.KSUNEXT_ENABLED == 'true'
+        run: |
+         cd kernel_workspace/kernel_platform
+         curl -L "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s v1.0.7
+         cd KernelSU-Next
+         KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" 10200)
+         echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
+         sed -i "29s/ccflags-y += -DKSU_VERSION=11998/ccflags-y += -DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
+         
+      - name: Set up susfs
+        if: github.event.inputs.SUSFS_ENABLED == 'true'
+        run: |
+           cd kernel_workspace
+           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
+           git clone https://github.com/WildKernels/kernel_patches.git
+           cd kernel_platform
+           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
+           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
+           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+
+           # Apply patches
+           cd KernelSU-Next
+           cp ../../kernel_patches/wild/* ./
+           patch -p1 < kernel-patch-susfs-v1.5.7-to-KernelSU-Next.patch || true
+           patch -p1 < fix_core_hook.c.patch || true
+           patch -p1 < fix_ksud.c.patch || true
+           patch -p1 < fix_selinux.c.patch || true
+           patch -p1 < fix_sucompat.c.patch || true
+           patch -p1 < manager.patch || true
+           patch -p1 < syscall_hooks.patch || true
+           cd ../common
+           patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
+           cp ../../kernel_patches/69_hide_stuff.patch ./
+           patch -p1 -F 3 < 69_hide_stuff.patch
+           
+      - name: Build kernel
+        run: |
+          export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
+          ccache clang -v
+          sudo apt install -y libelf-dev
+          cd kernel_workspace/kernel_platform/common
+      
+          if [[ "$KERNEL_VERSION" == "5.10" ]]; then
+            MAKE_ARGS="LLVM_IAS=1 $MAKE_ARGS"
+          fi
+          make -j$(nproc --all) O=out $MAKE_ARGS gki_defconfig
+          make -j$(nproc --all) O=out $MAKE_ARGS
+         
+      - name: Make AnyKernel3
+        run: |
+         git clone https://github.com/Kernel-SU/AnyKernel3 --depth=1
+         rm -rf ./AnyKernel3/.git
+         cp kernel_workspace/kernel_platform/common/out/arch/arm64/boot/Image ./AnyKernel3/
+
+      - name: Upload AnyKernel3
+        uses: actions/upload-artifact@v4
+        with:
+         name: AnyKernel3_KernelSU_Next_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
+         path: ./AnyKernel3/*
+         
+      - name: Upload Image
+        uses: actions/upload-artifact@v4
+        with:
+         name: Image_KernelSU_Next_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
+         path: kernel_workspace/kernel_platform/common/out/arch/arm64/boot/Image
+
