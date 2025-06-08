@@ -108,7 +108,7 @@ jobs:
           sed -i 's/-dirty//' ./msm-kernel/scripts/setlocalversion
           sed -i '$s|echo "\$res"|echo "\-android12-2-o-gfc9d05bca1e7cd"|' ./common/scripts/setlocalversion
           sed -i '$s|echo "\$res"|echo "\-android12-2-o-gfc9d05bca1e7cd"|' ./msm-kernel/scripts/setlocalversion
-          sed -i "/stable_scmversion_cmd/s/-maybe//g" ./build/kernel/kleaf/impl/stamp.bzl
+         
           
          
           # Run perl command to modify UTS_VERSION
